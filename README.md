@@ -35,8 +35,6 @@ done
 source ~/.zshrc
 ```
 
-`claude-utils` needs [`jq`](https://stedolan.github.io/jq/).
-
 ---
 
 <!-- sections:start -->
