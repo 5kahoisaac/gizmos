@@ -1,48 +1,48 @@
-<div align="center">
-  <img src="gizmos.png" alt="skillless" width="100%" />
-</div>
-
----
-
 # gizmos
 
-A catalog of small, single-file shell utilities I keep around as GitHub Gists.
-Nothing here is a framework or a product — just zsh/bash functions that save a
-few keystrokes and print pretty output while doing it. Each one does exactly one
-thing.
+![gizmos](gizmos.png)
+
+A catalog of small, single-file shell utilities. Nothing here is a framework or
+a product — just zsh/bash functions that save a few keystrokes and print pretty
+output while doing it. Each one does exactly one thing.
 
 ## Table of contents
 
+<!-- toc:start -->
 - [Setup](#setup)
 - [agents-kit](#agents-kit) — update all your AI coding CLIs at once
 - [claude-utils](#claude-utils) — switch between multiple Claude Code accounts
 - [gac](#gac) — git add & commit with semantic emoji shortcuts
+<!-- toc:end -->
 
 ---
 
 ## Setup
 
-Each script is a single file. Clone the gist, source it from your shell config, reload.
+Clone the repo, then add this loop to your shell config to source every script.
 
 ```sh
-# 1. clone the gist (use the gist's clone URL)
-git clone <gist-clone-url>
-cd <gist-folder>
+# 1. clone the repo
+git clone <repo-url> ~/.gizmos
 
-# 2. add it to your shell config
-echo "source $(pwd)/<script>.sh" >> ~/.zshrc
+# 2. add to ~/.zshrc
+for f in ~/.gizmos/*.sh; do
+  [ -r "$f" ] && source "$f"
+done
 
 # 3. reload
 source ~/.zshrc
 ```
 
-Repeat per script.
+`claude-utils` needs [`jq`](https://stedolan.github.io/jq/).
 
 ---
 
+<!-- sections:start -->
+
 ## agents-kit
 
-**Gist:** [gist.github.com/5kahoisaac/bac9d61bf6e194fa7bb9c2466883829d](https://gist.github.com/5kahoisaac/bac9d61bf6e194fa7bb9c2466883829d) · bash/zsh
+`agents-kit.sh` · bash/zsh
 
 Update all your AI coding command-line tools in one shot — Claude Code,
 OpenCode, OpenAI Codex CLI, Pi Coding Agent, LazyCodex — with consistent colored
@@ -54,11 +54,21 @@ agents-kit update --skip-ecc # tools only, skip the ECC repo step
 agents-kit --help
 ```
 
+To also reset and reinstall your local ECC checkout, set its path before
+sourcing the script (e.g. in `~/.zshrc`):
+
+```sh
+DEFAULT_ECC_REPO="$HOME/src/everything-claude-code"
+```
+
+Without `DEFAULT_ECC_REPO` (or `ECC_REPO` / `--ecc-repo PATH`), the ECC update
+step is skipped with a warning.
+
 ---
 
 ## claude-utils
 
-**Gist:** [gist.github.com/5kahoisaac/c5973e8277e8e0a4dde3906c99200be2](https://gist.github.com/5kahoisaac/c5973e8277e8e0a4dde3906c99200be2) · zsh
+`claude-utils.sh` · zsh
 
 Run more than one Claude Code account on the same machine (e.g. Pro and Max, or
 work and personal) and switch between them without logging out and back in.
@@ -77,7 +87,7 @@ Requires [`jq`](https://stedolan.github.io/jq/).
 
 ## gac
 
-**Gist:** [gist.github.com/5kahoisaac/980b6d5be79295c2a6236e0773dbf5ef](https://gist.github.com/5kahoisaac/980b6d5be79295c2a6236e0773dbf5ef) · zsh
+`gac.sh` · zsh
 
 Stage everything and commit with a semantic emoji prefix, in one short command.
 Run `gac -h` for the full grouped legend.
@@ -88,3 +98,5 @@ gac b fix null deref         # → 🐛 BUG FIX: fix null deref
 gac -s d update readme       # → 📖 DOCS: update readme   (staged only)
 gac just a quick note        # → just a quick note        (no prefix)
 ```
+
+<!-- sections:end -->
