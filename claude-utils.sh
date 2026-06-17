@@ -186,6 +186,12 @@ _claude_running() {
   pgrep -x claude >/dev/null 2>&1 || pgrep -f 'claude$' >/dev/null 2>&1
 }
 
+# Print the PIDs of running claude CLI processes (one per line, deduped).
+_claude_running_pids() {
+  { pgrep -x claude 2>/dev/null; pgrep -f 'claude$' 2>/dev/null; } \
+    | sort -un
+}
+
 # --- internal: report the currently-active account email ------------------
 _claude_active_email() {
   [[ -f "$CLAUDE_CONFIG_JSON" ]] || { echo ""; return; }
@@ -296,8 +302,38 @@ _claude_utils_switch() {
   if [[ ! -f "$CLAUDE_CONFIG_JSON" ]]; then
     _c_err "No ${C_DIM}$CLAUDE_CONFIG_JSON${C_RESET} — run ${C_BOLD}claude${C_RESET} once to initialise it."; return 1
   fi
+  local killed_running=0
   if _claude_running; then
-    _c_err "A ${C_BOLD}claude${C_RESET} process is running — close it first."; return 1
+    local -a rpids
+    rpids=(${(f)"$(_claude_running_pids)"})
+    _c_warn "A ${C_BOLD}claude${C_RESET} process is running ${C_DIM}(it would keep the old account until restarted)${C_RESET}:"
+    local rp pname
+    for rp in "${rpids[@]}"; do
+      [[ -z "$rp" ]] && continue
+      pname="$(ps -p "$rp" -o comm= 2>/dev/null | sed 's#^.*/##' | tr -d ' ')"
+      print -r -- "    ${C_DIM}pid${C_RESET} ${C_BOLD}$rp${C_RESET} ${C_DIM}${pname}${C_RESET}"
+    done
+    printf "%s Kill %sthese process(es)%s and continue switching? %s[y/N]%s " \
+      "${C_YELLOW}${G_ASK}${C_RESET}" "${C_BOLD}" "${C_RESET}" "${C_DIM}" "${C_RESET}"
+    local kreply; read -r kreply
+    case "$kreply" in
+      y|Y|yes|YES)
+        for rp in "${rpids[@]}"; do
+          [[ -z "$rp" ]] && continue
+          if kill -9 "$rp" 2>/dev/null; then
+            _c_ok "killed pid ${C_BOLD}$rp${C_RESET}"
+          else
+            _c_err "could not kill pid $rp (try with sudo?)"
+            return 1
+          fi
+        done
+        killed_running=1
+        ;;
+      *)
+        _c_info "Aborted — no processes killed, no switch performed."
+        return 1
+        ;;
+    esac
   fi
 
   # 1. swap credentials (token) into the real store: Keychain on macOS,
@@ -319,8 +355,12 @@ _claude_utils_switch() {
   local email; email="$(_claude_active_email)"
   _c_ok "Switched to profile $(_c_name "$prof")${email:+ ${C_DIM}(${C_RESET}$(_c_acct "$email")${C_DIM})${C_RESET}}"
   # Claude Code reads credentials only at startup (and caches the Keychain for
-  # ~30s on macOS). A running session keeps the old account until restarted.
-  _c_info "Restart any running ${C_BOLD}claude${C_RESET} session to pick up the new account."
+  # ~30s on macOS), so a running session keeps the old account until restarted.
+  if [[ "$killed_running" -eq 1 ]]; then
+    _c_info "Previous session was killed — relaunch ${C_BOLD}claude${C_RESET} for the new account."
+  else
+    _c_info "Restart any running ${C_BOLD}claude${C_RESET} session to pick up the new account."
+  fi
 }
 
 # --- internal: fetch 5h/7d usage for a profile's token --------------------
