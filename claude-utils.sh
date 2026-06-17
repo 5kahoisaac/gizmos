@@ -500,6 +500,58 @@ _claude_utils_status() {
   fi
 }
 
+# --- subcommand: delete — remove a stored profile --------------------------
+# Usage: claude-utils delete <profile>
+#   Destructive: removes the profile dir (token + account). Defaults to No.
+#   If the profile is the currently-active account, requires an extra
+#   confirmation, since the live login keeps working but its backup is gone.
+# 'remove'/'rm' are aliases for this in the dispatcher.
+_claude_utils_delete() {
+  local prof="$1"
+  if [[ -z "$prof" ]]; then
+    _c_info "usage: ${C_BOLD}claude-utils delete <profile>${C_RESET}"; return 1
+  fi
+
+  local src="$CLAUDE_PROFILES_DIR/$prof"
+  if [[ ! -d "$src" ]]; then
+    _c_err "No profile $(_c_name "$prof")  ${C_DIM}(see 'claude-utils list')${C_RESET}"; return 2
+  fi
+
+  # Look up the stored account email (best effort) to show what's affected.
+  local stored_email=""
+  if [[ -f "$src/.account.json" ]] && command -v jq >/dev/null 2>&1; then
+    stored_email="$(jq -r '.emailAddress // .email // empty' "$src/.account.json" 2>/dev/null)"
+  fi
+
+  # Is this the currently-active account?
+  local active_email; active_email="$(_claude_active_email 2>/dev/null)"
+  local is_active=0
+  [[ -n "$stored_email" && "$stored_email" == "$active_email" ]] && is_active=1
+
+  _c_warn "About to ${C_BOLD}${C_RED}delete${C_RESET} profile $(_c_name "$prof")${stored_email:+ ${C_DIM}(${C_RESET}$(_c_acct "$stored_email")${C_DIM})${C_RESET}}:"
+  print -r -- "    ${C_DIM}path:${C_RESET} ${C_DIM}$src${C_RESET}"
+  if [[ "$is_active" -eq 1 ]]; then
+    _c_warn "This is the ${C_BOLD}${C_YELLOW}currently-active${C_RESET} account. Your live login keeps working,"
+    _c_warn "but its saved backup will be gone — you'd need to ${C_BOLD}save${C_RESET} it again to restore it."
+  fi
+
+  printf "%s Delete profile %s%s%s? %s[y/N]%s " \
+    "${C_YELLOW}${G_ASK}${C_RESET}" \
+    "${C_BOLD}${C_MAGENTA}" "$prof" "${C_RESET}" \
+    "${C_DIM}" "${C_RESET}"
+  local reply; read -r reply
+  case "$reply" in
+    y|Y|yes|YES) ;;                                          # proceed
+    *) _c_info "Aborted — profile $(_c_name "$prof") left unchanged."; return 1 ;;
+  esac
+
+  if rm -rf -- "$src"; then
+    _c_ok "Deleted profile $(_c_name "$prof")."
+  else
+    _c_err "Failed to delete ${C_DIM}$src${C_RESET}"; return 1
+  fi
+}
+
 # --- usage -----------------------------------------------------------------
 _claude_utils_help() {
   cat <<USAGE
@@ -512,6 +564,7 @@ ${C_BOLD}Usage:${C_RESET}
   ${C_CYAN}claude-utils init${C_RESET}   ${C_DIM}<profile>${C_RESET}   alias for ${C_BOLD}save${C_RESET}
   ${C_CYAN}claude-utils switch${C_RESET} ${C_DIM}[profile]${C_RESET}   load a profile ${C_DIM}(no name = rotate to next)${C_RESET}
   ${C_CYAN}claude-utils list${C_RESET} ${C_DIM}[--usage]${C_RESET}     list profiles ${C_DIM}(--usage shows 5h/7d quota)${C_RESET}
+  ${C_CYAN}claude-utils delete${C_RESET} ${C_DIM}<profile>${C_RESET}   delete a stored profile ${C_DIM}(rm is an alias; asks first)${C_RESET}
   ${C_CYAN}claude-utils status${C_RESET}            show the active account and resolved paths
   ${C_CYAN}claude-utils help${C_RESET}              show this help
 
@@ -540,6 +593,9 @@ claude-utils() {
     init)    _claude_utils_save   "$@" ;;   # alias for save
     switch)  _claude_utils_switch "$@" ;;
     list)    _claude_utils_list   "$@" ;;
+    delete)  _claude_utils_delete "$@" ;;
+    remove)  _claude_utils_delete "$@" ;;   # alias for delete
+    rm)      _claude_utils_delete "$@" ;;   # alias for delete
     status)  _claude_utils_status "$@" ;;
     help|-h|--help|"") _claude_utils_help ;;
     *)
