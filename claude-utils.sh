@@ -81,6 +81,65 @@ _claude_resolve_paths() {
 }
 
 # ---------------------------------------------------------------------------
+# Credential store abstraction.
+#
+# On macOS, Claude Code's real token lives in the login Keychain
+# (service "Claude Code-credentials", account = $USER), NOT in
+# .credentials.json — which is only a fallback used over SSH / when Keychain
+# is unavailable. So on macOS we must read/write the Keychain, or a switch has
+# no visible effect (wrong account / wrong usage keeps showing).
+#
+# On Linux/WSL the file IS the source of truth.
+#
+# These helpers present one interface:
+#   _cred_read  -> prints the live token JSON to stdout (empty if none)
+#   _cred_write -> reads token JSON from stdin, stores it live
+# Each also keeps .credentials.json in sync as a portable fallback.
+# ---------------------------------------------------------------------------
+CLAUDE_KEYCHAIN_SERVICE="Claude Code-credentials"
+
+_claude_is_macos() { [[ "$(uname -s 2>/dev/null)" == "Darwin" ]]; }
+
+_claude_have_security() { command -v security >/dev/null 2>&1; }
+
+# Read the live token JSON.
+_cred_read() {
+  if _claude_is_macos && _claude_have_security; then
+    security find-generic-password -s "$CLAUDE_KEYCHAIN_SERVICE" -a "$USER" -w 2>/dev/null
+    return 0
+  fi
+  [[ -f "$CLAUDE_CREDS_LIVE" ]] && cat "$CLAUDE_CREDS_LIVE"
+}
+
+# Write the live token JSON (from stdin) to the live store(s).
+_cred_write() {
+  local json; json="$(cat)"
+  [[ -z "$json" ]] && return 1
+
+  # Always refresh the file fallback too (used by SSH / non-GUI sessions).
+  local dir; dir="$(dirname "$CLAUDE_CREDS_LIVE")"
+  [[ -d "$dir" ]] || mkdir -p "$dir"
+  printf '%s' "$json" > "$CLAUDE_CREDS_LIVE"
+  chmod 600 "$CLAUDE_CREDS_LIVE" 2>/dev/null
+
+  if _claude_is_macos && _claude_have_security; then
+    # -U updates the existing item in place (Claude reads this at startup).
+    security add-generic-password -U \
+      -s "$CLAUDE_KEYCHAIN_SERVICE" -a "$USER" -w "$json" 2>/dev/null
+  fi
+  return 0
+}
+
+# True if a live credential exists in either store.
+_cred_present() {
+  if _claude_is_macos && _claude_have_security; then
+    security find-generic-password -s "$CLAUDE_KEYCHAIN_SERVICE" -a "$USER" -w \
+      >/dev/null 2>&1 && return 0
+  fi
+  [[ -s "$CLAUDE_CREDS_LIVE" ]]
+}
+
+# ---------------------------------------------------------------------------
 # Colour palette + print helpers.
 #
 # Colours are enabled only when stdout is a TTY and NO_COLOR is unset, so
@@ -145,8 +204,8 @@ _claude_utils_save() {
   fi
   _claude_require_jq || return 1
 
-  if [[ ! -f "$CLAUDE_CREDS_LIVE" ]]; then
-    _c_err "No live credentials at ${C_DIM}$CLAUDE_CREDS_LIVE${C_RESET} — run ${C_BOLD}claude${C_RESET} and ${C_BOLD}/login${C_RESET} first."
+  if ! _cred_present; then
+    _c_err "No live credentials found — run ${C_BOLD}claude${C_RESET} and ${C_BOLD}/login${C_RESET} first."
     return 1
   fi
   if [[ ! -f "$CLAUDE_CONFIG_JSON" ]]; then
@@ -179,19 +238,50 @@ _claude_utils_save() {
   fi
 
   mkdir -p "$src"
-  cp "$CLAUDE_CREDS_LIVE" "$src/.credentials.json"
+  # capture the live token from the real store (Keychain on macOS, file on Linux)
+  _cred_read > "$src/.credentials.json"
+  chmod 600 "$src/.credentials.json" 2>/dev/null
   jq '.oauthAccount' "$CLAUDE_CONFIG_JSON" > "$src/.account.json"
 
   _c_ok "Saved profile $(_c_name "$prof")${live_email:+ ${C_DIM}(${C_RESET}$(_c_acct "$live_email")${C_DIM})${C_RESET}}."
 }
 
 # --- subcommand: switch — load a profile into the active config dir --------
+# Usage: claude-utils switch [profile]
+#   With no profile, rotates to the next profile after the active one.
 _claude_utils_switch() {
-  local prof="$1"
-  if [[ -z "$prof" ]]; then
-    _c_info "usage: ${C_BOLD}claude-utils switch <profile>${C_RESET}"; return 1
-  fi
   _claude_require_jq || return 1
+
+  local prof="$1"
+
+  # No name given -> rotate to the next profile (alphabetical) after active.
+  if [[ -z "$prof" ]]; then
+    local -a all
+    local d
+    for d in "$CLAUDE_PROFILES_DIR"/*(N/); do all+=("${d:t}"); done
+    if [[ ${#all[@]} -eq 0 ]]; then
+      _c_err "No profiles to rotate. Create one with ${C_BOLD}claude-utils save <name>${C_RESET}."
+      return 1
+    fi
+    if [[ ${#all[@]} -eq 1 ]]; then
+      prof="${all[1]}"
+    else
+      # find the active profile by matching its account email
+      local active_email; active_email="$(_claude_active_email)"
+      local i active_idx=0 e
+      for i in {1..${#all[@]}}; do
+        e="$(jq -r '.emailAddress // .email // empty' \
+               "$CLAUDE_PROFILES_DIR/${all[$i]}/.account.json" 2>/dev/null)"
+        if [[ -n "$active_email" && "$e" == "$active_email" ]]; then
+          active_idx=$i; break
+        fi
+      done
+      # next index (wrap); if active not found, start at first
+      local next_idx=$(( active_idx % ${#all[@]} + 1 ))
+      prof="${all[$next_idx]}"
+    fi
+    _c_info "Rotating to next profile: $(_c_name "$prof")"
+  fi
 
   local src="$CLAUDE_PROFILES_DIR/$prof"
   if [[ ! -d "$src" ]]; then
@@ -210,8 +300,11 @@ _claude_utils_switch() {
     _c_err "A ${C_BOLD}claude${C_RESET} process is running — close it first."; return 1
   fi
 
-  # 1. swap credentials (token)
-  cp "$src/.credentials.json" "$CLAUDE_CREDS_LIVE"
+  # 1. swap credentials (token) into the real store: Keychain on macOS,
+  #    file on Linux. _cred_write keeps both in sync.
+  if ! _cred_write < "$src/.credentials.json"; then
+    _c_err "Failed to write credentials to the live store."; return 1
+  fi
 
   # 2. splice the raw oauthAccount object into .claude.json (atomic via mv)
   local tmp; tmp="$(mktemp)"
@@ -225,11 +318,48 @@ _claude_utils_switch() {
 
   local email; email="$(_claude_active_email)"
   _c_ok "Switched to profile $(_c_name "$prof")${email:+ ${C_DIM}(${C_RESET}$(_c_acct "$email")${C_DIM})${C_RESET}}"
+  # Claude Code reads credentials only at startup (and caches the Keychain for
+  # ~30s on macOS). A running session keeps the old account until restarted.
+  _c_info "Restart any running ${C_BOLD}claude${C_RESET} session to pick up the new account."
+}
+
+# --- internal: fetch 5h/7d usage for a profile's token --------------------
+# Reads the access token from a profile's .credentials.json and queries the
+# (undocumented) OAuth usage endpoint. Prints "5h%|7d%|reset" or "" on failure.
+# Network call — only invoked by `list --usage`.
+_claude_profile_usage() {
+  local credfile="$1"
+  [[ -f "$credfile" ]] || { echo ""; return; }
+  command -v curl >/dev/null 2>&1 || { echo ""; return; }
+
+  local token
+  token="$(jq -r '.claudeAiOauth.accessToken // .accessToken // empty' "$credfile" 2>/dev/null)"
+  [[ -z "$token" ]] && { echo ""; return; }
+
+  local resp
+  resp="$(curl -s --max-time 8 \
+            -H "Authorization: Bearer $token" \
+            -H "Content-Type: application/json" \
+            https://api.anthropic.com/api/oauth/usage 2>/dev/null)"
+  [[ -z "$resp" ]] && { echo ""; return; }
+
+  # Parse 5-hour and 7-day utilization (0..1 -> %), plus 5h reset time.
+  echo "$resp" | jq -r '
+    def pct(x): if x == null then "?" else ((x * 100) | floor | tostring) + "%" end;
+    [ pct(.five_hour.utilization // .fiveHour.utilization),
+      pct(.seven_day.utilization // .sevenDay.utilization),
+      (.five_hour.resets_at // .fiveHour.resetsAt // "")
+    ] | @tsv' 2>/dev/null
 }
 
 # --- subcommand: list — show profiles, mark the active one -----------------
+# Usage: claude-utils list [--usage]
+#   --usage  also query and show each account's 5h / 7d quota (network call)
 _claude_utils_list() {
   _claude_require_jq || return 1
+
+  local show_usage=0
+  [[ "$1" == "--usage" || "$1" == "-u" ]] && show_usage=1
 
   if [[ ! -d "$CLAUDE_PROFILES_DIR" ]]; then
     _c_warn "No profiles dir at ${C_DIM}$CLAUDE_PROFILES_DIR${C_RESET}. Create one with ${C_BOLD}claude-utils save <name>${C_RESET}."
@@ -238,8 +368,15 @@ _claude_utils_list() {
 
   local active_email; active_email="$(_claude_active_email)"
   local found=0 d prof email
+  # declare loop-locals once; re-using `local` inside the loop makes zsh echo them
+  local use5 use7 u is_active name_col acct_col mark acct_disp
 
-  print -r -- "${C_BOLD}  PROFILE      ACCOUNT${C_RESET}"
+  if [[ "$show_usage" -eq 1 ]]; then
+    print -r -- "${C_BOLD}  PROFILE      ACCOUNT                        5H     7D${C_RESET}"
+  else
+    print -r -- "${C_BOLD}  PROFILE      ACCOUNT${C_RESET}"
+  fi
+
   for d in "$CLAUDE_PROFILES_DIR"/*(N/); do
     found=1
     prof="${d:t}"
@@ -248,23 +385,47 @@ _claude_utils_list() {
     else
       email=""
     fi
-    if [[ -n "$active_email" && "$email" == "$active_email" ]]; then
-      # active row: green dot, bold name, highlighted account
-      printf "%s %s%-12s%s %s\n" \
-        "${C_GREEN}${G_DOT}${C_RESET}" \
-        "${C_BOLD}${C_GREEN}" "$prof" "${C_RESET}" \
-        "${C_GREEN}${email}${C_RESET}"
-    else
-      local acct_disp
-      if [[ -n "$email" ]]; then
-        acct_disp="${C_CYAN}${email}${C_RESET}"
+
+    # optional usage columns
+    use5=""; use7=""
+    if [[ "$show_usage" -eq 1 ]]; then
+      u="$(_claude_profile_usage "$d/.credentials.json")"
+      if [[ -n "$u" ]]; then
+        use5="${u%%	*}"
+        use7="$(print -r -- "$u" | cut -f2)"
       else
-        acct_disp="${C_DIM}(no .account.json)${C_RESET}"
+        use5="—"; use7="—"
       fi
+    fi
+
+    is_active=0
+    [[ -n "$active_email" && "$email" == "$active_email" ]] && is_active=1
+
+    if [[ "$is_active" -eq 1 ]]; then
+      mark="${C_GREEN}${G_DOT}${C_RESET}"
+      name_col="${C_BOLD}${C_GREEN}"
+      acct_col="${C_GREEN}"
+    else
+      mark=" "
+      name_col="${C_MAGENTA}"
+      acct_col="${C_CYAN}"
+    fi
+
+    if [[ -n "$email" ]]; then
+      acct_disp="${acct_col}${email}${C_RESET}"
+    else
+      acct_disp="${C_DIM}(no .account.json)${C_RESET}"
+    fi
+
+    if [[ "$show_usage" -eq 1 ]]; then
+      printf "%s %s%-12s%s %-30s %s%5s%s  %s%5s%s\n" \
+        "$mark" "$name_col" "$prof" "${C_RESET}" \
+        "$acct_disp" \
+        "${C_YELLOW}" "$use5" "${C_RESET}" \
+        "${C_YELLOW}" "$use7" "${C_RESET}"
+    else
       printf "%s %s%-12s%s %s\n" \
-        " " \
-        "${C_MAGENTA}" "$prof" "${C_RESET}" \
-        "$acct_disp"
+        "$mark" "$name_col" "$prof" "${C_RESET}" "$acct_disp"
     fi
   done
 
@@ -281,7 +442,14 @@ _claude_utils_status() {
     "${C_DIM}" "${C_RESET}" "$CLAUDE_HOME" \
     "${CLAUDE_CONFIG_DIR:+  ${C_YELLOW}(from CLAUDE_CONFIG_DIR)${C_RESET}}"
   printf "  %sIdentity file:%s ${C_DIM}%s${C_RESET}\n" "${C_DIM}" "${C_RESET}" "$CLAUDE_CONFIG_JSON"
-  printf "  %sToken file:   %s ${C_DIM}%s${C_RESET}\n" "${C_DIM}" "${C_RESET}" "$CLAUDE_CREDS_LIVE"
+  # Where the real token lives differs by platform.
+  local store
+  if _claude_is_macos && _claude_have_security; then
+    store="macOS Keychain (\"$CLAUDE_KEYCHAIN_SERVICE\") + file fallback"
+  else
+    store="$CLAUDE_CREDS_LIVE"
+  fi
+  printf "  %sToken store:  %s ${C_DIM}%s${C_RESET}\n" "${C_DIM}" "${C_RESET}" "$store"
   local email; email="$(_claude_active_email)"
   if [[ -n "$email" ]]; then
     printf "  %sActive account:%s %s%s%s\n" \
@@ -302,8 +470,8 @@ ${C_BOLD}Usage:${C_RESET}
                               ${C_DIM}(init is an alias). Creates if new; if the${C_RESET}
                               ${C_DIM}profile holds a different account, asks first.${C_RESET}
   ${C_CYAN}claude-utils init${C_RESET}   ${C_DIM}<profile>${C_RESET}   alias for ${C_BOLD}save${C_RESET}
-  ${C_CYAN}claude-utils switch${C_RESET} ${C_DIM}<profile>${C_RESET}   load a profile into the active config dir
-  ${C_CYAN}claude-utils list${C_RESET}              list profiles ${C_DIM}(active one marked ${C_GREEN}${G_DOT}${C_RESET}${C_DIM})${C_RESET}
+  ${C_CYAN}claude-utils switch${C_RESET} ${C_DIM}[profile]${C_RESET}   load a profile ${C_DIM}(no name = rotate to next)${C_RESET}
+  ${C_CYAN}claude-utils list${C_RESET} ${C_DIM}[--usage]${C_RESET}     list profiles ${C_DIM}(--usage shows 5h/7d quota)${C_RESET}
   ${C_CYAN}claude-utils status${C_RESET}            show the active account and resolved paths
   ${C_CYAN}claude-utils help${C_RESET}              show this help
 
@@ -313,6 +481,8 @@ ${C_BOLD}Typical setup:${C_RESET}
   ${C_DIM}claude                       # /login as account 2, then exit${C_RESET}
   claude-utils save ${C_MAGENTA}max${C_RESET}
   claude-utils switch ${C_MAGENTA}pro${C_RESET} && claude
+
+${C_DIM}Note: after switching, restart any running claude session for it to take effect.${C_RESET}
 USAGE
 }
 
