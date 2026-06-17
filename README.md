@@ -13,6 +13,7 @@ output while doing it. Each one does exactly one thing.
 - [agents-kit](#agents-kit) — update all your AI coding CLIs at once
 - [claude-utils](#claude-utils) — switch between multiple Claude Code accounts
 - [gac](#gac) — git add & commit with semantic emoji shortcuts
+- [killport](#killport) — kill processes and containers listening on TCP ports
 <!-- toc:end -->
 
 ---
@@ -97,6 +98,23 @@ gac f add login endpoint     # → ✅ FEAT: add login endpoint
 gac b fix null deref         # → 🐛 BUG FIX: fix null deref
 gac -s d update readme       # → 📖 DOCS: update readme   (staged only)
 gac just a quick note        # → just a quick note        (no prefix)
+```
+
+---
+
+## killport
+
+`killport.sh` · zsh
+
+Kill whatever is listening on a TCP port — the owning process by default, or
+the Docker container publishing it in `auto` mode. Supports multiple ports,
+signal control, dry-run preview, and a `--no-fail` exit-code override.
+
+```sh
+killport 8080               # free port 8080 (SIGTERM the listener)
+killport 3000 8080 9090     # free several ports at once
+killport -s KILL 8080       # use SIGKILL instead of SIGTERM
+killport --dry-run 5432     # preview without killing anything
 ```
 
 <!-- sections:end -->
