@@ -1,8 +1,10 @@
-# gizmos
-
 <div align="center">
   <img src="gizmos.png" alt="skillless" width="100%" />
 </div>
+
+---
+
+# gizmos
 
 A catalog of small, single-file shell utilities I keep around as GitHub Gists.
 Nothing here is a framework or a product — just zsh/bash functions that save a
