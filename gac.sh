@@ -47,7 +47,7 @@ function gac() {
     print -r -- "  🎉 ${C_BOLD}INIT${C_RESET}           ${C_CYAN}e${C_RESET}"
     print -r -- "${C_DIM}Build${C_RESET}"
     print -r -- "  ✅ ${C_BOLD}FEAT${C_RESET}           ${C_CYAN}f${C_RESET}"
-    print -r -- "  🛠  ${C_BOLD}WORKING ON${C_RESET}     ${C_CYAN}w${C_RESET}"
+    print -r -- "  🛠 ${C_BOLD}WORKING ON${C_RESET}     ${C_CYAN}w${C_RESET}"
     print -r -- "  🚧 ${C_BOLD}WIP${C_RESET}            ${C_CYAN}z${C_RESET}"
     print -r -- "  👌 ${C_BOLD}IMPROVE${C_RESET}        ${C_CYAN}i${C_RESET}"
     print -r -- "  🪚 ${C_BOLD}REFACTOR${C_RESET}       ${C_CYAN}r${C_RESET}"
