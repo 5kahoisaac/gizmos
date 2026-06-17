@@ -14,6 +14,7 @@ output while doing it. Each one does exactly one thing.
 - [claude-utils](#claude-utils) — switch between multiple Claude Code accounts
 - [gac](#gac) — git add & commit with semantic emoji shortcuts
 - [killport](#killport) — kill processes and containers listening on TCP ports
+- [License](#license)
 <!-- toc:end -->
 
 ---
@@ -116,3 +117,7 @@ killport --dry-run 5432     # preview without killing anything
 ```
 
 <!-- sections:end -->
+
+## License
+
+[MIT](LICENSE.md)
