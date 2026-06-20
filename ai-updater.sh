@@ -4,7 +4,7 @@
 # DEFAULT_ECC_REPO="$HOME/Documents/ECC"
 
 # Example: COMMAND_NAME="ai"
-COMMAND_NAME="agents-kit"
+COMMAND_NAME="ai-updater"
 
 OUTPUT_HEAD_LINES="${OUTPUT_HEAD_LINES:-20}"
 OUTPUT_TAIL_LINES="${OUTPUT_TAIL_LINES:-20}"
@@ -36,30 +36,28 @@ usage() {
 ${C_BOLD}${C_MAGENTA}${COMMAND_NAME}${C_RESET} ${C_DIM}— update your AI coding tools${C_RESET}
 
 ${C_BOLD}Usage:${C_RESET}
-  ${C_CYAN}${COMMAND_NAME} update${C_RESET}
-  ${C_CYAN}${COMMAND_NAME} update --ecc-repo PATH${C_RESET}
+  ${C_CYAN}${COMMAND_NAME} update [TOOL …]${C_RESET}
 
-${C_BOLD}Updates:${C_RESET}
-  ${C_DIM}${G_ARROW}${C_RESET} Claude Code
-  ${C_DIM}${G_ARROW}${C_RESET} OpenCode
-  ${C_DIM}${G_ARROW}${C_RESET} OpenAI Codex CLI
-  ${C_DIM}${G_ARROW}${C_RESET} Pi Coding Agent
-  ${C_DIM}${G_ARROW}${C_RESET} LazyCodex
-  ${C_DIM}${G_ARROW}${C_RESET} ECC repo (only if a repo path is set): git fetch, git reset --hard origin/main, ./install.sh --profile full
+${C_BOLD}Tools:${C_RESET}
+  ${C_CYAN}claude${C_RESET}      Claude Code
+  ${C_CYAN}opencode${C_RESET}    OpenCode
+  ${C_CYAN}codex${C_RESET}       OpenAI Codex CLI
+  ${C_CYAN}pi${C_RESET}          Pi Coding Agent
+  ${C_CYAN}lazycodex${C_RESET}   LazyCodex
+  ${C_CYAN}headroom${C_RESET}    Headroom MCP
+  ${C_CYAN}ecc${C_RESET}         ECC repo (git fetch + reset --hard + install)
 
 ${C_BOLD}Options:${C_RESET}
-  ${C_CYAN}--ecc-repo PATH${C_RESET}   Set the ECC repo path. Can also use ECC_REPO=PATH or DEFAULT_ECC_REPO.
-  ${C_CYAN}--yes${C_RESET}             Accepted for old muscle memory; not required.
-  ${C_CYAN}--skip-ecc${C_RESET}        Update tools only; skip ECC repo reset/install.
+  ${C_CYAN}--ecc-repo PATH${C_RESET}   ECC repo path (also: ECC_REPO=PATH or DEFAULT_ECC_REPO)
   ${C_CYAN}-h, --help${C_RESET}        Show this help.
 
 ${C_BOLD}Notes:${C_RESET}
-  ${C_DIM}If no ECC repo path is set, the ECC step is skipped automatically.${C_RESET}
+  ${C_DIM}Omitting TOOL (or passing "all") updates every tool.${C_RESET}
+  ${C_DIM}ECC is skipped automatically when no repo path is configured.${C_RESET}
   ${C_YELLOW}The ECC reset discards all uncommitted and local-only tracked changes.${C_RESET}
 
 ${C_BOLD}In ~/.zshrc:${C_RESET}
-  ${C_DIM}COMMAND_NAME="${COMMAND_NAME}"${C_RESET}
-  ${C_DIM}source ~/agents-kit.sh${C_RESET}
+  ${C_DIM}source ~/ai-updater.sh${C_RESET}
 USAGE
 }
 
@@ -103,7 +101,7 @@ need_cmd() {
 }
 
 run() {
-  local output_file status _arg
+  local output_file _exit_code _arg
 
   # Echo the command, dim and %q-quoted, behind a CMD tag.
   printf '  %s%-5s%s' "${C_CYAN}" "${G_CMD} CMD" "${C_RESET}"
@@ -112,7 +110,7 @@ run() {
   done
   printf '\n'
 
-  output_file="$(mktemp "${TMPDIR:-/tmp}/agents-kit.XXXXXX")" || return 1
+  output_file="$(mktemp "${TMPDIR:-/tmp}/ai-updater.XXXXXX")" || return 1
 
   if "$@" >"$output_file" 2>&1; then
     if [[ -s "$output_file" ]]; then
@@ -121,15 +119,15 @@ run() {
     rm -f "$output_file"
     return 0
   else
-    status=$?
+    _exit_code=$?
   fi
 
   if [[ -s "$output_file" ]]; then
     print_output "$output_file" >&2
   fi
   rm -f "$output_file"
-  fail "command failed with exit code $status"
-  return "$status"
+  fail "command failed with exit code $_exit_code"
+  return "$_exit_code"
 }
 
 has_global_npm_package() {
@@ -225,6 +223,24 @@ update_lazycodex() {
   ok "LazyCodex update finished"
 }
 
+update_headroom() {
+  log "Headroom MCP"
+
+  if need_cmd pipx && pipx list 2>/dev/null | grep -q headroom-ai; then
+    run pipx upgrade headroom-ai
+  elif need_cmd pip && pip show headroom-ai &>/dev/null; then
+    run pip install --upgrade "headroom-ai[all]"
+  elif need_cmd npm && has_global_npm_package headroom-ai; then
+    run npm install -g headroom-ai@latest
+  else
+    warn "Headroom not found. Install it: pip install 'headroom-ai[all]' or npm install -g headroom-ai"
+    return 0
+  fi
+
+  need_cmd headroom && run headroom --version || true
+  ok "Headroom MCP update finished"
+}
+
 update_ecc_repo() {
   log "ECC repo"
 
@@ -259,55 +275,39 @@ _ai_tools_update() (
   set -euo pipefail
 
   ECC_REPO="${ECC_REPO:-${DEFAULT_ECC_REPO:-}}"
-  SKIP_ECC=0
+  local -a targets=()
 
   while (($#)); do
     case "$1" in
       --ecc-repo)
-        [[ $# -ge 2 ]] || {
-          fail "--ecc-repo needs a path"
-          exit 2
-        }
-        ECC_REPO="$2"
-        shift 2
-        ;;
-      --yes)
-        shift
-        ;;
-      --skip-ecc)
-        SKIP_ECC=1
-        shift
-        ;;
+        [[ $# -ge 2 ]] || { fail "--ecc-repo needs a path"; exit 2; }
+        ECC_REPO="$2"; shift 2 ;;
       -h|--help)
-        usage
-        exit 0
-        ;;
+        usage; exit 0 ;;
+      claude|opencode|codex|pi|lazycodex|headroom|ecc)
+        targets+=("$1"); shift ;;
       *)
-        fail "unknown argument: $1"
-        usage >&2
-        exit 2
-        ;;
+        fail "unknown tool: $1  (available: claude opencode codex pi lazycodex headroom ecc)"
+        usage >&2; exit 2 ;;
     esac
   done
 
-  printf '\n%s%s agents-kit update%s\n' "${C_BOLD}${C_MAGENTA}" "${G_ARROW}" "${C_RESET}"
+  [[ ${#targets[@]} -eq 0 ]] && targets=(claude opencode codex pi lazycodex headroom ecc)
+
+  printf '\n%s%s ai-updater update%s\n' "${C_BOLD}${C_MAGENTA}" "${G_ARROW}" "${C_RESET}"
   printf '%s─────────────────────%s\n' "${C_DIM}" "${C_RESET}"
 
-  update_claude
-  update_opencode
-  update_codex
-  update_pi
-  update_lazycodex
-
-  if [[ "$SKIP_ECC" == "1" ]]; then
-    log "ECC repo"
-    warn "Skipped by --skip-ecc"
-  elif [[ -z "${ECC_REPO:-}" ]]; then
-    log "ECC repo"
-    warn "No ECC repo path set. Skipping (set DEFAULT_ECC_REPO, ECC_REPO, or pass --ecc-repo)."
-  else
-    update_ecc_repo
-  fi
+  for _tool in "${targets[@]}"; do
+    case "$_tool" in
+      claude)    update_claude ;;
+      opencode)  update_opencode ;;
+      codex)     update_codex ;;
+      pi)        update_pi ;;
+      lazycodex) update_lazycodex ;;
+      headroom)  update_headroom ;;
+      ecc)       update_ecc_repo ;;
+    esac
+  done
 
   log "Done"
   ok "All requested updates finished"

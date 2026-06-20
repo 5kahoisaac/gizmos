@@ -10,11 +10,11 @@ output while doing it. Each one does exactly one thing.
 
 <!-- toc:start -->
 - [Setup](#setup)
-- [agents-kit](#agents-kit) — update all your AI coding CLIs at once
+- [ai-sweeper](#ai-sweeper) — clear caches, logs, and dead sessions across multiple AI coding agents
+- [ai-updater](#ai-updater) — update all your AI coding CLIs at once
 - [claude-utils](#claude-utils) — switch between multiple Claude Code accounts
 - [gac](#gac) — git add & commit with semantic emoji shortcuts
 - [killport](#killport) — kill processes and containers listening on TCP ports
-- [License](#license)
 <!-- toc:end -->
 
 ---
@@ -40,29 +40,33 @@ source ~/.zshrc
 
 <!-- sections:start -->
 
-## agents-kit
+## ai-sweeper
 
-`agents-kit.sh` · bash/zsh
+`ai-sweeper.sh` · zsh
 
-Update all your AI coding command-line tools in one shot — Claude Code,
-OpenCode, OpenAI Codex CLI, Pi Coding Agent, LazyCodex — with consistent colored
-status for each step. Tools you don't have installed are skipped with a notice.
+clear caches, logs, and dead sessions across multiple AI coding agents
 
 ```sh
-agents-kit update            # update everything
-agents-kit update --skip-ecc # tools only, skip the ECC repo step
-agents-kit --help
+ai-sweeper status                  # disk usage per agent
+ai-sweeper list codex-cli          # preview what would be deleted
+ai-sweeper --dry-run clean         # rehearsal run across all agents
+ai-sweeper clean codex-desktop     # delete one agent's junk
 ```
 
-To also reset and reinstall your local ECC checkout, set its path before
-sourcing the script (e.g. in `~/.zshrc`):
+---
+
+## ai-updater
+
+`ai-updater.sh` · bash/zsh
+
+update all your AI coding CLIs at once
 
 ```sh
-DEFAULT_ECC_REPO="$HOME/src/everything-claude-code"
+ai-updater update               # update all tools
+ai-updater update claude        # update one tool
+ai-updater update claude codex headroom   # update several
+ai-updater update ecc --ecc-repo ~/src/ecc  # ECC repo only
 ```
-
-Without `DEFAULT_ECC_REPO` (or `ECC_REPO` / `--ecc-repo PATH`), the ECC update
-step is skipped with a warning.
 
 ---
 
