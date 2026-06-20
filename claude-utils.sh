@@ -819,5 +819,5 @@ cc() {
   done
 
   # Launch Claude with the processed arguments array safely preserved
-  claude "${final_args[@]}"
+  headroom wrap claude --no-serena "${final_args[@]}"
 }
