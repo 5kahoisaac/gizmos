@@ -296,8 +296,53 @@ _aac_clean_one() {
 }
 
 # --- codex archived sessions ------------------------------------------------
-# Parses ~/.codex/archived_sessions/*.jsonl, extracts the cwd (project path),
-# removes the project folder if it still exists, then deletes the JSONL.
+# Parses ~/.codex/archived_sessions/*.jsonl, extracts the cwd recorded in each
+# session, and removes the corresponding project folder before deleting the
+# JSONL. Folder removal is gated by two safety rules:
+#   1. No *active* (non-archived) session may reference the same cwd.
+#   2. The cwd must live under $HOME/Documents/Codex (throwaway chat scratch
+#      dirs only — never an arbitrary path or a real git repo).
+# The archived JSONL itself is always deleted regardless of the folder decision.
+
+# Populate the global _AAC_ACTIVE_CWDS map from live Codex sessions.
+# Called directly (not via $()) so the global survives.
+_aac_codex_active_cwds() {
+  typeset -gA _AAC_ACTIVE_CWDS=()
+  local dirs=("$HOME/.codex/sessions"
+              "${XDG_DATA_HOME:-$HOME/.local/share}/codex/sessions")
+  local d f cwd
+  for d in "${dirs[@]}"; do
+    [[ -d "$d" ]] || continue
+    for f in "$d"/**/*.jsonl(N); do
+      cwd=$(jq -r 'select(.type == "session_meta") | .payload.cwd' "$f" 2>/dev/null | head -1)
+      [[ -n "$cwd" ]] && _AAC_ACTIVE_CWDS[$cwd]=1
+    done
+  done
+}
+
+# Classify a candidate cwd for folder removal.
+# Echoes one of: remove | skip-active | skip-path | skip-missing | no-cwd.
+# Reads _AAC_ACTIVE_CWDS (inherited by the $() subshell as a read-only view).
+_aac_codex_classify_cwd() {
+  local cwd="$1"
+  local codex_root="$HOME/Documents/Codex"
+  if [[ -z "$cwd" ]]; then
+    echo "no-cwd"; return
+  fi
+  if (( ${+_AAC_ACTIVE_CWDS[$cwd]} )); then
+    echo "skip-active"; return
+  fi
+  # Resolve symlinks on both sides so the prefix check is robust.
+  local resolved="${cwd:A}" root_resolved="${codex_root:A}"
+  if [[ "$resolved" != "$root_resolved"/* ]]; then
+    echo "skip-path"; return
+  fi
+  if [[ ! -d "$cwd" ]]; then
+    echo "skip-missing"; return
+  fi
+  echo "remove"
+}
+
 _aac_clean_codex_archived() {
   command -v jq >/dev/null 2>&1 || {
     _c_err "${C_BOLD}jq${C_RESET} is required for archived session parsing but not found in PATH."
@@ -309,7 +354,7 @@ _aac_clean_codex_archived() {
 
   _c_head "Codex — archived sessions"
 
-  local f cwd
+  local f cwd action reason
   local files=()
   for f in "$archived_dir"/*.jsonl(N); do
     files+=("$f")
@@ -320,16 +365,28 @@ _aac_clean_codex_archived() {
     return 0
   fi
 
+  # Rule 1 — scan active sessions so we never rm a folder still in use.
+  _c_info "scanning active sessions for in-use cwds…"
+  _aac_codex_active_cwds
+
   print -r -- "  ${C_BOLD}${#files[@]}${C_RESET} archived session(s):"
   for f in "${files[@]}"; do
     cwd=$(jq -r 'select(.type == "session_meta") | .payload.cwd' "$f" 2>/dev/null | head -1)
-    if [[ -n "$cwd" && -d "$cwd" ]]; then
-      printf "    ${C_YELLOW}%s${C_RESET}  ${C_DIM}(%s) → project dir will be removed${C_RESET}\n" \
-        "$cwd" "$(_aac_du "$cwd")"
-    elif [[ -n "$cwd" ]]; then
-      printf "    ${C_DIM}%s  (folder not found, skipping)${C_RESET}\n" "$cwd"
-    else
-      printf "    ${C_DIM}%s  (no cwd in session)${C_RESET}\n" "$f"
+    action=$(_aac_codex_classify_cwd "$cwd")
+    case "$action" in
+      remove)
+        printf "    ${C_YELLOW}%s${C_RESET}  ${C_DIM}(%s) → project dir will be removed${C_RESET}\n" \
+          "$cwd" "$(_aac_du "$cwd")"
+        ;;
+      skip-active)  reason="referenced by an active session" ;;
+      skip-path)    reason="outside \$HOME/Documents/Codex" ;;
+      skip-missing) reason="folder not found" ;;
+      no-cwd)
+        printf "    ${C_DIM}%s  (no cwd in session)${C_RESET}\n" "$f"
+        ;;
+    esac
+    if [[ "$action" == skip-* ]]; then
+      printf "    ${C_DIM}%s  (%s — folder kept)${C_RESET}\n" "$cwd" "$reason"
     fi
     printf "    ${C_DIM}  %s → jsonl will be deleted${C_RESET}\n" "$f"
   done
@@ -340,7 +397,7 @@ _aac_clean_codex_archived() {
     return 0
   fi
 
-  printf "%s Delete project dirs + session files? %s[y/N]%s " \
+  printf "%s Delete (folders under \$HOME/Documents/Codex only) + session files? %s[y/N]%s " \
     "${C_YELLOW}${G_ASK}${C_RESET}" "${C_DIM}" "${C_RESET}"
   local reply
   read -r reply
@@ -351,7 +408,8 @@ _aac_clean_codex_archived() {
 
   for f in "${files[@]}"; do
     cwd=$(jq -r 'select(.type == "session_meta") | .payload.cwd' "$f" 2>/dev/null | head -1)
-    if [[ -n "$cwd" && -d "$cwd" ]]; then
+    action=$(_aac_codex_classify_cwd "$cwd")
+    if [[ "$action" == "remove" ]]; then
       if rm -rf "$cwd" 2>/dev/null; then
         _c_ok "removed project $cwd"
       else
