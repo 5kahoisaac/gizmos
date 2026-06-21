@@ -112,6 +112,7 @@ _aac_targets_codex_cli() {
     # Dead session transcripts — prime SSD killer
     "$HOME/.codex/sessions"
     "$HOME/.codex/logs"
+    "$HOME/.codex/attachments"
     "$HOME/.codex/logs_2.sqlite"
     "$HOME/.codex/logs_2.sqlite-wal"
     "$HOME/.codex/logs_2.sqlite-shm"
