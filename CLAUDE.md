@@ -8,7 +8,6 @@ meant to be sourced directly from a shell rc file.
 
 - One script = one self-contained tool, sourced rather than executed as a binary.
 - Document new scripts in `README.md` using the `gizmos-catalog` skill.
-- `claude-utils.sh` depends on `jq`.
 
 ## Verifying changes
 

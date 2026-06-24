@@ -39,13 +39,15 @@ ${C_BOLD}Usage:${C_RESET}
   ${C_CYAN}${COMMAND_NAME} update [TOOL …]${C_RESET}
 
 ${C_BOLD}Tools:${C_RESET}
-  ${C_CYAN}claude${C_RESET}      Claude Code
-  ${C_CYAN}opencode${C_RESET}    OpenCode
-  ${C_CYAN}codex${C_RESET}       OpenAI Codex CLI
-  ${C_CYAN}pi${C_RESET}          Pi Coding Agent
-  ${C_CYAN}lazycodex${C_RESET}   LazyCodex
-  ${C_CYAN}headroom${C_RESET}    Headroom MCP
-  ${C_CYAN}ecc${C_RESET}         ECC repo (git fetch + reset --hard + install)
+  ${C_CYAN}claude${C_RESET}           Claude Code
+  ${C_CYAN}claude-swap${C_RESET}      claude-swap (multi-account switcher, binary: cswap)
+  ${C_CYAN}opencode${C_RESET}         OpenCode
+  ${C_CYAN}codex${C_RESET}            OpenAI Codex CLI
+  ${C_CYAN}codex-multi-auth${C_RESET} codex-multi-auth (Codex CLI multi-account OAuth manager)
+  ${C_CYAN}pi${C_RESET}               Pi Coding Agent
+  ${C_CYAN}lazycodex${C_RESET}        LazyCodex
+  ${C_CYAN}headroom${C_RESET}         Headroom MCP
+  ${C_CYAN}ecc${C_RESET}              ECC repo (git fetch + reset --hard + install)
 
 ${C_BOLD}Options:${C_RESET}
   ${C_CYAN}--ecc-repo PATH${C_RESET}   ECC repo path (also: ECC_REPO=PATH or DEFAULT_ECC_REPO)
@@ -241,6 +243,41 @@ update_headroom() {
   ok "Headroom MCP update finished"
 }
 
+update_claude_swap() {
+  log "claude-swap"
+
+  if need_cmd pipx && pipx list 2>/dev/null | grep -q claude-swap; then
+    run pipx upgrade claude-swap
+  elif need_cmd uv && uv tool list 2>/dev/null | grep -q claude-swap; then
+    run uv tool upgrade claude-swap
+  elif need_cmd cswap; then
+    run cswap --upgrade
+  else
+    warn "claude-swap not found. Install it: uv tool install claude-swap  (or pipx install claude-swap)"
+    return 0
+  fi
+
+  need_cmd cswap && run cswap --version || true
+  ok "claude-swap update finished"
+}
+
+update_codex_multi_auth() {
+  log "codex-multi-auth"
+
+  if has_global_npm_package codex-multi-auth; then
+    run npm install -g codex-multi-auth@latest
+  elif need_cmd codex-multi-auth; then
+    warn "codex-multi-auth is installed outside npm. Reinstall via: npm i -g codex-multi-auth"
+    return 0
+  else
+    warn "codex-multi-auth not found. Install it: npm i -g codex-multi-auth"
+    return 0
+  fi
+
+  need_cmd codex-multi-auth && run codex-multi-auth --version || true
+  ok "codex-multi-auth update finished"
+}
+
 update_ecc_repo() {
   log "ECC repo"
 
@@ -284,28 +321,30 @@ _ai_tools_update() (
         ECC_REPO="$2"; shift 2 ;;
       -h|--help)
         usage; exit 0 ;;
-      claude|opencode|codex|pi|lazycodex|headroom|ecc)
+      claude|claude-swap|opencode|codex|codex-multi-auth|pi|lazycodex|headroom|ecc)
         targets+=("$1"); shift ;;
       *)
-        fail "unknown tool: $1  (available: claude opencode codex pi lazycodex headroom ecc)"
+        fail "unknown tool: $1  (available: claude claude-swap opencode codex codex-multi-auth pi lazycodex headroom ecc)"
         usage >&2; exit 2 ;;
     esac
   done
 
-  [[ ${#targets[@]} -eq 0 ]] && targets=(claude opencode codex pi lazycodex headroom ecc)
+  [[ ${#targets[@]} -eq 0 ]] && targets=(claude claude-swap opencode codex codex-multi-auth pi lazycodex headroom ecc)
 
   printf '\n%s%s ai-updater update%s\n' "${C_BOLD}${C_MAGENTA}" "${G_ARROW}" "${C_RESET}"
   printf '%s─────────────────────%s\n' "${C_DIM}" "${C_RESET}"
 
   for _tool in "${targets[@]}"; do
     case "$_tool" in
-      claude)    update_claude ;;
-      opencode)  update_opencode ;;
-      codex)     update_codex ;;
-      pi)        update_pi ;;
-      lazycodex) update_lazycodex ;;
-      headroom)  update_headroom ;;
-      ecc)       update_ecc_repo ;;
+      claude)             update_claude ;;
+      claude-swap)        update_claude_swap ;;
+      opencode)           update_opencode ;;
+      codex)              update_codex ;;
+      codex-multi-auth)   update_codex_multi_auth ;;
+      pi)                 update_pi ;;
+      lazycodex)          update_lazycodex ;;
+      headroom)           update_headroom ;;
+      ecc)                update_ecc_repo ;;
     esac
   done
 

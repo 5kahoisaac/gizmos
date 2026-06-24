@@ -12,7 +12,6 @@ output while doing it. Each one does exactly one thing.
 - [Setup](#setup)
 - [ai-sweeper](#ai-sweeper) — clear caches, logs, and dead sessions across multiple AI coding agents
 - [ai-updater](#ai-updater) — update all your AI coding CLIs at once
-- [claude-utils](#claude-utils) — switch between multiple Claude Code accounts
 - [gac](#gac) — git add & commit with semantic emoji shortcuts
 - [killport](#killport) — kill processes and containers listening on TCP ports
 <!-- toc:end -->
@@ -67,25 +66,6 @@ ai-updater update claude        # update one tool
 ai-updater update claude codex headroom   # update several
 ai-updater update ecc --ecc-repo ~/src/ecc  # ECC repo only
 ```
-
----
-
-## claude-utils
-
-`claude-utils.sh` · zsh
-
-Run more than one Claude Code account on the same machine (e.g. Pro and Max, or
-work and personal) and switch between them without logging out and back in.
-Project history, MCP servers, plugins, skills, and agents stay shared.
-
-```sh
-claude-utils save pro        # capture the current login as "pro"
-claude-utils list            # show profiles, active one marked
-claude-utils switch pro      # swap to the "pro" account
-claude-utils status          # active account + resolved paths
-```
-
-Requires [`jq`](https://stedolan.github.io/jq/).
 
 ---
 
