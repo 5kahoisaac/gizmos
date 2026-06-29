@@ -47,6 +47,7 @@ ${C_BOLD}Tools:${C_RESET}
   ${C_CYAN}pi${C_RESET}               Pi Coding Agent
   ${C_CYAN}lazycodex${C_RESET}        LazyCodex
   ${C_CYAN}headroom${C_RESET}         Headroom MCP
+  ${C_CYAN}codebase-memory${C_RESET}  codebase-memory-mcp (DeusData)
   ${C_CYAN}ecc${C_RESET}              ECC repo (git fetch + reset --hard + install)
 
 ${C_BOLD}Options:${C_RESET}
@@ -243,6 +244,22 @@ update_headroom() {
   ok "Headroom MCP update finished"
 }
 
+update_codebase_memory_mcp() {
+  log "codebase-memory-mcp"
+
+  if npm list -g codebase-memory-mcp &>/dev/null 2>&1; then
+    run npm install -g codebase-memory-mcp@latest
+  elif npm list -g @deusdata/codebase-memory-mcp &>/dev/null 2>&1; then
+    run npm install -g @deusdata/codebase-memory-mcp@latest
+  else
+    warn "codebase-memory-mcp not found as a global npm package."
+    warn "Install from: https://github.com/DeusData/codebase-memory-mcp"
+    return 0
+  fi
+
+  ok "codebase-memory-mcp update finished"
+}
+
 update_claude_swap() {
   log "claude-swap"
 
@@ -321,15 +338,15 @@ _ai_tools_update() (
         ECC_REPO="$2"; shift 2 ;;
       -h|--help)
         usage; exit 0 ;;
-      claude|claude-swap|opencode|codex|codex-multi-auth|pi|lazycodex|headroom|ecc)
+      claude|claude-swap|opencode|codex|codex-multi-auth|pi|lazycodex|headroom|codebase-memory|ecc)
         targets+=("$1"); shift ;;
       *)
-        fail "unknown tool: $1  (available: claude claude-swap opencode codex codex-multi-auth pi lazycodex headroom ecc)"
+        fail "unknown tool: $1  (available: claude claude-swap opencode codex codex-multi-auth pi lazycodex headroom codebase-memory ecc)"
         usage >&2; exit 2 ;;
     esac
   done
 
-  [[ ${#targets[@]} -eq 0 ]] && targets=(claude claude-swap opencode codex codex-multi-auth pi lazycodex headroom ecc)
+  [[ ${#targets[@]} -eq 0 ]] && targets=(claude claude-swap opencode codex codex-multi-auth pi lazycodex headroom codebase-memory ecc)
 
   printf '\n%s%s ai-updater update%s\n' "${C_BOLD}${C_MAGENTA}" "${G_ARROW}" "${C_RESET}"
   printf '%s─────────────────────%s\n' "${C_DIM}" "${C_RESET}"
@@ -344,6 +361,7 @@ _ai_tools_update() (
       pi)                 update_pi ;;
       lazycodex)          update_lazycodex ;;
       headroom)           update_headroom ;;
+      codebase-memory)    update_codebase_memory_mcp ;;
       ecc)                update_ecc_repo ;;
     esac
   done
