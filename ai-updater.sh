@@ -3,6 +3,8 @@
 # Example: DEFAULT_ECC_REPO="$HOME/src/everything-claude-code"
 # DEFAULT_ECC_REPO="$HOME/Documents/ECC"
 
+# Example: DEFAULT_UA_REPO="$HOME/.understand-anything/repo"
+
 # Example: COMMAND_NAME="ai"
 COMMAND_NAME="ai-updater"
 
@@ -49,15 +51,17 @@ ${C_BOLD}Tools:${C_RESET}
   ${C_CYAN}headroom${C_RESET}         Headroom MCP
   ${C_CYAN}codebase-memory${C_RESET}  codebase-memory-mcp (DeusData)
   ${C_CYAN}ecc${C_RESET}              ECC repo (git fetch + reset --hard + install)
+  ${C_CYAN}understand-anything${C_RESET} Understand-Anything repo (git fetch + reset --hard + install)
 
 ${C_BOLD}Options:${C_RESET}
   ${C_CYAN}--ecc-repo PATH${C_RESET}   ECC repo path (also: ECC_REPO=PATH or DEFAULT_ECC_REPO)
+  ${C_CYAN}--ua-repo PATH${C_RESET}    Understand-Anything repo path (also: UA_REPO=PATH or DEFAULT_UA_REPO)
   ${C_CYAN}-h, --help${C_RESET}        Show this help.
 
 ${C_BOLD}Notes:${C_RESET}
   ${C_DIM}Omitting TOOL (or passing "all") updates every tool.${C_RESET}
-  ${C_DIM}ECC is skipped automatically when no repo path is configured.${C_RESET}
-  ${C_YELLOW}The ECC reset discards all uncommitted and local-only tracked changes.${C_RESET}
+  ${C_DIM}ECC and Understand-Anything are skipped automatically when no repo path is configured.${C_RESET}
+  ${C_YELLOW}The ECC and Understand-Anything resets discard all uncommitted and local-only tracked changes.${C_RESET}
 
 ${C_BOLD}In ~/.zshrc:${C_RESET}
   ${C_DIM}source ~/ai-updater.sh${C_RESET}
@@ -180,14 +184,10 @@ update_opencode() {
 update_codex() {
   log "OpenAI Codex CLI"
 
-  if has_brew_cask codex; then
-    run brew upgrade --cask codex
-  elif has_global_npm_package @openai/codex; then
+  if need_cmd npm; then
     run npm install -g @openai/codex@latest
-  elif need_cmd curl; then
-    run sh -c 'curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh'
   else
-    warn "curl not found, so the Codex standalone installer cannot run."
+    warn "npm not found. Install Node.js/npm first, then run: npm install -g @openai/codex@latest"
     return 0
   fi
 
@@ -325,10 +325,41 @@ update_ecc_repo() {
   ok "ECC repo update finished"
 }
 
+update_understand_anything_repo() {
+  log "Understand-Anything repo"
+
+  # No path configured -> nothing to do; skip cleanly.
+  if [[ -z "${UA_REPO:-}" ]]; then
+    warn "No Understand-Anything repo path set (DEFAULT_UA_REPO / UA_REPO / --ua-repo). Skipping."
+    return 0
+  fi
+
+  if [[ ! -d "$UA_REPO/.git" ]]; then
+    fail "not a git repo: $UA_REPO"
+    exit 2
+  fi
+
+  printf '  %s%-5s%s %s%s%s\n' "${C_MAGENTA}" "${G_PATH} PATH" "${C_RESET}" "${C_DIM}" "$UA_REPO" "${C_RESET}"
+  run git -C "$UA_REPO" fetch origin main
+  run git -C "$UA_REPO" reset --hard origin/main
+
+  if [[ -f "$UA_REPO/install.sh" ]]; then
+    (cd "$UA_REPO" && run bash ./install.sh --update)
+    # Re-link the codex platform so any newly added skills get installed.
+    (cd "$UA_REPO" && run bash ./install.sh codex)
+  else
+    fail "install script is missing: $UA_REPO/install.sh"
+    exit 2
+  fi
+
+  ok "Understand-Anything repo update finished"
+}
+
 _ai_tools_update() (
   set -euo pipefail
 
   ECC_REPO="${ECC_REPO:-${DEFAULT_ECC_REPO:-}}"
+  UA_REPO="${UA_REPO:-${DEFAULT_UA_REPO:-}}"
   local -a targets=()
 
   while (($#)); do
@@ -336,17 +367,20 @@ _ai_tools_update() (
       --ecc-repo)
         [[ $# -ge 2 ]] || { fail "--ecc-repo needs a path"; exit 2; }
         ECC_REPO="$2"; shift 2 ;;
+      --ua-repo)
+        [[ $# -ge 2 ]] || { fail "--ua-repo needs a path"; exit 2; }
+        UA_REPO="$2"; shift 2 ;;
       -h|--help)
         usage; exit 0 ;;
-      claude|claude-swap|opencode|codex|codex-multi-auth|pi|lazycodex|headroom|codebase-memory|ecc)
+      claude|claude-swap|opencode|codex|codex-multi-auth|pi|lazycodex|headroom|codebase-memory|ecc|understand-anything)
         targets+=("$1"); shift ;;
       *)
-        fail "unknown tool: $1  (available: claude claude-swap opencode codex codex-multi-auth pi lazycodex headroom codebase-memory ecc)"
+        fail "unknown tool: $1  (available: claude claude-swap opencode codex codex-multi-auth pi lazycodex headroom codebase-memory ecc understand-anything)"
         usage >&2; exit 2 ;;
     esac
   done
 
-  [[ ${#targets[@]} -eq 0 ]] && targets=(claude claude-swap opencode codex codex-multi-auth pi lazycodex headroom codebase-memory ecc)
+  [[ ${#targets[@]} -eq 0 ]] && targets=(claude claude-swap opencode codex codex-multi-auth pi lazycodex headroom codebase-memory ecc understand-anything)
 
   printf '\n%s%s ai-updater update%s\n' "${C_BOLD}${C_MAGENTA}" "${G_ARROW}" "${C_RESET}"
   printf '%s─────────────────────%s\n' "${C_DIM}" "${C_RESET}"
@@ -363,6 +397,7 @@ _ai_tools_update() (
       headroom)           update_headroom ;;
       codebase-memory)    update_codebase_memory_mcp ;;
       ecc)                update_ecc_repo ;;
+      understand-anything) update_understand_anything_repo ;;
     esac
   done
 

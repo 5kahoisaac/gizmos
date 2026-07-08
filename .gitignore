@@ -48,6 +48,7 @@ $mypy_cache/
 # General
 .cache/
 .cache/*
+.tokensave
 
 
 # =========================

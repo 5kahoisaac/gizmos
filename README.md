@@ -65,6 +65,7 @@ ai-updater update               # update all tools
 ai-updater update claude        # update one tool
 ai-updater update claude codex headroom   # update several
 ai-updater update ecc --ecc-repo ~/src/ecc  # ECC repo only
+ai-updater update understand-anything --ua-repo ~/.understand-anything/repo  # Understand-Anything repo only
 ```
 
 ---
