@@ -14,6 +14,7 @@ output while doing it. Each one does exactly one thing.
 - [ai-updater](#ai-updater) — update all your AI coding CLIs at once
 - [gac](#gac) — git add & commit with semantic emoji shortcuts
 - [killport](#killport) — kill processes and containers listening on TCP ports
+- [teams-a](#teams-a) — keep Microsoft Teams from going idle so your status stays green
 <!-- toc:end -->
 
 ---
@@ -97,6 +98,27 @@ killport 8080               # free port 8080 (SIGTERM the listener)
 killport 3000 8080 9090     # free several ports at once
 killport -s KILL 8080       # use SIGKILL instead of SIGTERM
 killport --dry-run 5432     # preview without killing anything
+```
+
+---
+
+## teams-a
+
+`teams-a.sh` · zsh
+
+keep Microsoft Teams from going idle so your status stays green
+
+Every interval it focuses Teams and presses `Cmd-2` (Chat) so Teams registers
+activity, with a `caffeinate` child keeping the display awake. Runs in the
+foreground until `Ctrl-C`. Needs Accessibility permission for your terminal
+(System Settings → Privacy & Security → Accessibility).
+
+```sh
+teams-a                     # refresh every 5 minutes until Ctrl-C
+teams-a -i 120              # refresh every 2 minutes
+teams-a --once              # single refresh (checks permissions work)
+teams-a --no-caffeinate     # let the display sleep as usual
+teams-a -y                  # skip the confirmation prompt
 ```
 
 <!-- sections:end -->
