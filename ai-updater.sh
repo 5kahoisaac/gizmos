@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-# Example: DEFAULT_ECC_REPO="$HOME/src/everything-claude-code"
-# DEFAULT_ECC_REPO="$HOME/Documents/ECC"
-
 # Example: COMMAND_NAME="ai"
 COMMAND_NAME="ai-updater"
 
@@ -18,11 +15,11 @@ _ak_init_colors() {
     C_RESET=$'\e[0m'; C_BOLD=$'\e[1m'; C_DIM=$'\e[2m'
     C_RED=$'\e[31m'; C_GREEN=$'\e[32m'; C_YELLOW=$'\e[33m'
     C_BLUE=$'\e[34m'; C_MAGENTA=$'\e[35m'; C_CYAN=$'\e[36m'
-    G_OK="✓"; G_FAIL="✗"; G_SKIP="•"; G_CMD="›"; G_PATH="📁"; G_ARROW="▸"
+    G_OK="✓"; G_FAIL="✗"; G_SKIP="•"; G_CMD="›"; G_ARROW="▸"
   else
     C_RESET=""; C_BOLD=""; C_DIM=""
     C_RED=""; C_GREEN=""; C_YELLOW=""; C_BLUE=""; C_MAGENTA=""; C_CYAN=""
-    G_OK=""; G_FAIL=""; G_SKIP=""; G_CMD=""; G_PATH=""; G_ARROW="*"
+    G_OK=""; G_FAIL=""; G_SKIP=""; G_CMD=""; G_ARROW="*"
   fi
 }
 _ak_init_colors
@@ -44,16 +41,12 @@ ${C_BOLD}Tools:${C_RESET}
   ${C_CYAN}opencode${C_RESET}         OpenCode
   ${C_CYAN}codex${C_RESET}            OpenAI Codex CLI
   ${C_CYAN}pi${C_RESET}               Pi Coding Agent (CLI + extensions)
-  ${C_CYAN}ecc${C_RESET}              ECC repo (git fetch + reset --hard + install)
 
 ${C_BOLD}Options:${C_RESET}
-  ${C_CYAN}--ecc-repo PATH${C_RESET}   ECC repo path (also: ECC_REPO=PATH or DEFAULT_ECC_REPO)
   ${C_CYAN}-h, --help${C_RESET}        Show this help.
 
 ${C_BOLD}Notes:${C_RESET}
   ${C_DIM}Omitting TOOL (or passing "all") updates every tool.${C_RESET}
-  ${C_DIM}ECC is skipped automatically when no repo path is configured.${C_RESET}
-  ${C_YELLOW}The ECC reset discards all uncommitted and local-only tracked changes.${C_RESET}
 
 ${C_BOLD}In ~/.zshrc:${C_RESET}
   ${C_DIM}source ~/ai-updater.sh${C_RESET}
@@ -228,58 +221,24 @@ update_claude_swap() {
   ok "claude-swap update finished"
 }
 
-update_ecc_repo() {
-  log "ECC repo"
-
-  # No path configured -> nothing to do; skip cleanly.
-  if [[ -z "${ECC_REPO:-}" ]]; then
-    warn "No ECC repo path set (DEFAULT_ECC_REPO / ECC_REPO / --ecc-repo). Skipping."
-    return 0
-  fi
-
-  if [[ ! -d "$ECC_REPO/.git" ]]; then
-    fail "not a git repo: $ECC_REPO"
-    exit 2
-  fi
-
-  printf '  %s%-5s%s %s%s%s\n' "${C_MAGENTA}" "${G_PATH} PATH" "${C_RESET}" "${C_DIM}" "$ECC_REPO" "${C_RESET}"
-  run git -C "$ECC_REPO" fetch origin main
-  run git -C "$ECC_REPO" reset --hard origin/main
-
-  if [[ -x "$ECC_REPO/install" ]]; then
-    (cd "$ECC_REPO" && run ./install)
-  elif [[ -f "$ECC_REPO/install.sh" ]]; then
-    (cd "$ECC_REPO" && run bash ./install.sh --profile full)
-  else
-    fail "install script is missing: $ECC_REPO/install or $ECC_REPO/install.sh"
-    exit 2
-  fi
-
-  ok "ECC repo update finished"
-}
-
 _ai_tools_update() (
   set -euo pipefail
 
-  ECC_REPO="${ECC_REPO:-${DEFAULT_ECC_REPO:-}}"
   local -a targets=()
 
   while (($#)); do
     case "$1" in
-      --ecc-repo)
-        [[ $# -ge 2 ]] || { fail "--ecc-repo needs a path"; exit 2; }
-        ECC_REPO="$2"; shift 2 ;;
       -h|--help)
         usage; exit 0 ;;
-      claude|claude-swap|opencode|codex|pi|ecc)
+      claude|claude-swap|opencode|codex|pi)
         targets+=("$1"); shift ;;
       *)
-        fail "unknown tool: $1  (available: claude claude-swap opencode codex pi ecc)"
+        fail "unknown tool: $1  (available: claude claude-swap opencode codex pi)"
         usage >&2; exit 2 ;;
     esac
   done
 
-  [[ ${#targets[@]} -eq 0 ]] && targets=(claude claude-swap opencode codex pi ecc)
+  [[ ${#targets[@]} -eq 0 ]] && targets=(claude claude-swap opencode codex pi)
 
   printf '\n%s%s ai-updater update%s\n' "${C_BOLD}${C_MAGENTA}" "${G_ARROW}" "${C_RESET}"
   printf '%s─────────────────────%s\n' "${C_DIM}" "${C_RESET}"
@@ -291,7 +250,6 @@ _ai_tools_update() (
       opencode)           update_opencode ;;
       codex)              update_codex ;;
       pi)                 update_pi ;;
-      ecc)                update_ecc_repo ;;
     esac
   done
 

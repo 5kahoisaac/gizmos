@@ -64,7 +64,6 @@ update all your AI coding CLIs at once
 ai-updater update               # update all tools
 ai-updater update claude        # update one tool
 ai-updater update claude codex pi   # update several
-ai-updater update ecc --ecc-repo ~/src/ecc  # ECC repo only
 ```
 
 ---
