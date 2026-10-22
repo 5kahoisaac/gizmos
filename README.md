@@ -12,6 +12,7 @@ output while doing it. Each one does exactly one thing.
 - [Setup](#setup)
 - [ai-sweeper](#ai-sweeper) — clear caches, logs, and dead sessions across multiple AI coding agents
 - [ai-updater](#ai-updater) — update all your AI coding CLIs at once
+- [cve-2026-109618](#cve-2026-109618) — check hosts for PHP2Shell (CVE-2026-109618/109619) exposure, detection only
 - [gac](#gac) — git add & commit with semantic emoji shortcuts
 - [killport](#killport) — kill processes and containers listening on TCP ports
 - [teams-a](#teams-a) — keep Microsoft Teams from going idle so your status stays green
@@ -65,6 +66,21 @@ update all your AI coding CLIs at once
 ai-updater update               # update all tools
 ai-updater update claude        # update one tool
 ai-updater update claude codex pi   # update several
+```
+
+---
+
+## cve-2026-109618
+
+`cve-2026-109618.sh` · sh (POSIX)
+
+check hosts for PHP2Shell (CVE-2026-109618/109619) exposure, detection only
+
+```sh
+cve-2026-109618 example.com shop.example.com   # header banner check
+cve-2026-109618 -s -u deploy -f hosts.txt      # authoritative, via ssh
+# CI/cron: sh cve-2026-109618.sh -f hosts.txt
+# exit: 0 all OK, 1 any VULNERABLE, 2 usage error, 3 UNKNOWN/UNREACHABLE left
 ```
 
 ---
